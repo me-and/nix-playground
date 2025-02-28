@@ -5,8 +5,17 @@ jobs:
     strategy:
       matrix:
         runner:
-          - ubuntu-latest
-#          - ubuntu-24.04-arm
+#          - ubuntu-latest
+          - ubuntu-24.04-arm
+        target:
+          - git
+          - gitMinimal
+          - gitSVN
+          - gitFull
+          - git-doc
+          - nixosTests.gitdaemon
+          - nixosTests.buildbot
+          - tests.fetchgit
     runs-on: ${{matrix.runner}}
     steps:
       - name: Checkout
@@ -18,4 +27,4 @@ jobs:
       - name: Set up Nix cache
         uses: DeterminateSystems/magic-nix-cache-action@v7
       - name: Build
-        run: nix-build
+        run: nix-build -A ${{matrix.target}}
