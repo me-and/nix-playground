@@ -36,6 +36,7 @@ jobs:
   merge-caches:
     name: Merge Nix caches
     needs: build
+    if: always()
     concurrency:
       group: cachemerge
     permissions:
