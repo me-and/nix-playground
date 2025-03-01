@@ -2,20 +2,44 @@ name: Build
 on: [push]
 jobs:
   build:
-    strategy:
-      matrix:
-        runner:
-          - ubuntu-latest
-#          - ubuntu-24.04-arm
-    runs-on: ${{matrix.runner}}
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v12
+        uses: nixbuild/nix-quick-install-action@v30
+      - name: Restore Nix store cache
+        uses: nix-community/cache-nix-action/restore@v6
         with:
-          extra-conf: sandbox = relaxed
-      - name: Set up Nix cache
-        uses: DeterminateSystems/magic-nix-cache-action@v7
+          primary-key: cfnlint-${{hashFiles('default.nix')}}-${{github.run_id}}
+          restore-prefixes-all-matches: cfnlint-
       - name: Build
+        timeout-minutes: 300
         run: nix-build
+      - name: Check out garbage collector
+        uses: actions/checkout@v4
+        with:
+          repository: risicle/nix-heuristic-gc
+          path: nhgc
+      - name: Build garbage collector
+        id: build-gc
+        if: always()
+        run: nix-build -A pkg nhgc
+      - name: Collect garbage
+        if: steps.build-gc.outcome == 'success'
+        run: |
+          store_size="$(du -bs /nix | cut -f1)"
+          max_size=$((1024*1024*1024*10))  # 10GB uncompressed
+          to_collect=$((max_size - store_size))
+          if (( to_collect > 0 )); then
+              ./result/bin/nix-heuristic-gc --penalize-drvs --penalize-substitutable "$to_collect"
+          fi
+      - name: Save Nix store cache
+        if: always()
+        uses: nix-community/cache-nix-action/save@v6
+        with:
+          primary-key: cfnlint-${{hashFiles('default.nix')}}-${{github.run_id}}
+          purge: true
+          purge-prefixes: cfnlint-
+          purge-created: 0
+          purge-primary-key: never
