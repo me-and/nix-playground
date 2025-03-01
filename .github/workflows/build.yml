@@ -2,69 +2,17 @@ name: Build
 on: [push]
 jobs:
   build:
-    strategy:
-      fail-fast: false
-      matrix:
-        target:
-          - gitFull
-          - gitFull.passthru.tests.withInstallCheck
-          - gitSVN
-          - gitSVN.passthru.tests.withInstallCheck
-          - git-doc
-          - nixosTests.gitdaemon
-          - nixosTests.buildbot
     runs-on: ubuntu-24.04-arm
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Install Nix
         uses: nixbuild/nix-quick-install-action@v30
-      - name: Restore Nix store cache
-        uses: nix-community/cache-nix-action/restore@v6
-        with:
-          primary-key: git-${{hashFiles('default.nix')}}-separate-${{matrix.target}}-${{github.run_id}}
-          restore-prefixes-all-matches: git-
-      - name: Build
-        timeout-minutes: 300
-        run: nix-build -A ${{matrix.target}}
-      - name: Save Nix store cache
-        if: always()
-        uses: nix-community/cache-nix-action/save@v6
-        with:
-          primary-key: git-${{hashFiles('default.nix')}}-separate-${{matrix.target}}-${{github.run_id}}
-
-  merge-caches:
-    name: Merge Nix caches
-    needs: build
-    if: always()
-    concurrency:
-      group: cachemerge
-    permissions:
-      actions: write
-    runs-on: ubuntu-24.04-arm
-    steps:
-      - name: Install Nix
-        uses: nixbuild/nix-quick-install-action@v30
-      - name: Merge caches
-        uses: nix-community/cache-nix-action@v6
-        with:
-          primary-key: git-${{matrix.runner}}-${{hashFiles('default.nix')}}-merged-${{github.run_id}}
-          restore-prefixes-all-matches: git-${{matrix.runner}}-
-          purge: true
-          purge-prefixes: git-${{matrix.runner}}-
-          purge-created: 0
-          purge-primary-key: never
-      - name: Check out garbage collector
-        uses: actions/checkout@v4
-        with:
-          repository: risicle/nix-heuristic-gc
-      - name: Build garbage collector
-        run: nix-build -A pkg
-      - name: Collect garbage
+      - name: Extract info
         run: |
-          store_size="$(du -bs /nix | cut -f1)"
-          max_size=$((1024*1024*1024*10))  # 10GB uncompressed
-          to_collect=$((max_size - store_size))
-          if (( to_collect > 0 )); then
-              ./result/bin/nix-heuristic-gc --penalize-drvs --penalize-substitutable "$to_collect"
+          set -x
+          if [[ -v XDG_CONFIG_HOME ]]; then
+              cat "$XDG_CONFIG_HOME"/nix/nix.conf
+          else
+              cat "$HOME"/.config/nix/nix.conf
           fi
