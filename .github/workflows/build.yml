@@ -10,13 +10,6 @@ jobs:
           - ubuntu-24.04-arm
         target:
           - git
-          - gitMinimal
-          - gitSVN
-          - gitFull
-          - git-doc
-          - nixosTests.gitdaemon
-          - nixosTests.buildbot
-          - tests.fetchgit
     runs-on: ${{matrix.runner}}
     steps:
       - name: Checkout
@@ -28,6 +21,9 @@ jobs:
         with:
           primary-key: git-${{matrix.runner}}-${{hashFiles('default.nix')}}-separate-${{matrix.target}}-${{github.run_id}}
           restore-prefixes-all-matches: git-${{matrix.runner}}-
+      - name: Fail
+        run: sleep 300
+        timeout-minutes: 1
       - name: Build
         timeout-minutes: 300
         run: nix-build -A ${{matrix.target}}
