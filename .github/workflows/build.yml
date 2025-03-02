@@ -71,9 +71,9 @@ jobs:
         uses: nix-community/cache-nix-action@v6
         with:
           primary-key: git-${{matrix.runner}}-${{hashFiles('default.nix')}}-merged-${{github.run_id}}
-          restore-prefixes-all-matches: git-${{matrix.runner}}-
+          restore-prefixes-all-matches: git-
           purge: true
-          purge-prefixes: git-${{matrix.runner}}-
+          purge-prefixes: git-
           purge-created: 0
           purge-primary-key: never
       - name: Set up nixpkgs
