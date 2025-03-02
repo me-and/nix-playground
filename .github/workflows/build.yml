@@ -27,6 +27,26 @@ jobs:
       - name: Build
         timeout-minutes: 300
         run: nix-build -A ${{matrix.target}}
+      - name: Set up nixpkgs
+        run: |
+          commit="$(<commit)"
+          nix-channel --add https://github.com/NixOS/nixpkgs/archive/"$commit".tar.gz nixpkgs
+          nix-channel --update nixpkgs
+      - name: Check out garbage collector
+        uses: actions/checkout@v4
+        with:
+          repository: risicle/nix-heuristic-gc
+          path: nhgc
+      - name: Build garbage collector
+        run: nix-build -A pkg "$GITHUB_WORKSPACE"/nhgc
+      - name: Collect garbage
+        run: |
+          store_size="$(du -bs /nix | cut -f1)"
+          max_size=$((1024*1024*1024*5))  # 5GB uncompressed
+          to_collect=$((max_size - store_size))
+          if (( to_collect > 0 )); then
+              ./result/bin/nix-heuristic-gc --penalize-drvs --penalize-substitutable "$to_collect"
+          fi
       - name: Save Nix store cache
         if: always()
         uses: nix-community/cache-nix-action/save@v6
@@ -43,6 +63,8 @@ jobs:
       actions: write
     runs-on: ubuntu-24.04-arm
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
       - name: Install Nix
         uses: nixbuild/nix-quick-install-action@v30
       - name: Merge caches
@@ -54,12 +76,18 @@ jobs:
           purge-prefixes: git-${{matrix.runner}}-
           purge-created: 0
           purge-primary-key: never
+      - name: Set up nixpkgs
+        run: |
+          commit="$(<commit)"
+          nix-channel --add https://github.com/NixOS/nixpkgs/archive/"$commit".tar.gz nixpkgs
+          nix-channel --update nixpkgs
       - name: Check out garbage collector
         uses: actions/checkout@v4
         with:
           repository: risicle/nix-heuristic-gc
+          path: nhgc
       - name: Build garbage collector
-        run: nix-build -A pkg
+        run: nix-build -A pkg "$GITHUB_WORKSPACE"/nhgc
       - name: Collect garbage
         run: |
           store_size="$(du -bs /nix | cut -f1)"
