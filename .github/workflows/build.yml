@@ -1,0 +1,74 @@
+name: Build
+on: [push]
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+#          - ubuntu-24.04-arm
+          - ubuntu-latest
+        target:
+          - python3Packages.cfn-lint
+    runs-on: ${{matrix.runner}}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up SSH config
+        env:
+          NIXBUILD_AUTH_TOKEN: ${{secrets.NIXBUILD_AUTH_TOKEN}}
+        run: |
+          mkdir -p ~/.ssh
+          cat <<EOF >~/.ssh/config
+          Host eu.nixbuild.net
+            User authtoken
+            PreferredAuthentications none
+            SetEnv token=$NIXBUILD_AUTH_TOKEN
+            ServerAliveInterval 60
+            IPQoS throughput
+          EOF
+          echo 'eu.nixbuild.net ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPIQCZc54poJ8vqawd8TraNryQeJnvH1eLpIDgbiqymM' >~/.ssh/known_hosts
+      - name: Install Nix
+        uses: nixbuild/nix-quick-install-action@v30
+        with:
+          nix_conf: |
+            builders-use-substitutes = true
+            sandbox = relaxed
+            substituters = ssh://eu.nixbuild.net?priority=50 https://cache.nixos.org/
+            trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nixbuild.net/3V9K4V-1:zLEau7IqIsmK/NP/pp8pUDJ+tQiD77AxRapkORQXpio=
+      - name: Restore Nix store cache
+        uses: nix-community/cache-nix-action/restore@v6
+        with:
+          primary-key: cfnlint-${{matrix.runner}}-${{hashFiles('default.nix')}}-separate-${{matrix.target}}-${{github.run_id}}
+          restore-prefixes-all-matches: git-${{matrix.runner}}-
+      - name: Build
+        timeout-minutes: 300
+        run: nix-build -A ${{matrix.target}}
+      - name: Set up nixpkgs
+        if: always()
+        run: |
+          nix-channel --add https://github.com/NixOS/nixpkgs/archive/nixpkgs-unstable.tar.gz nixpkgs
+          nix-channel --update nixpkgs
+      - name: Check out garbage collector
+        if: always()
+        uses: actions/checkout@v4
+        with:
+          repository: risicle/nix-heuristic-gc
+          path: nhgc
+      - name: Build garbage collector
+        if: always()
+        run: nix-build -A pkg "$GITHUB_WORKSPACE"/nhgc
+      - name: Collect garbage
+        if: always()
+        run: |
+          store_size="$(du -bs /nix | cut -f1)"
+          max_size=$((1024*1024*1024*5))  # 5GB uncompressed
+          to_collect=$((max_size - store_size))
+          if (( to_collect > 0 )); then
+              ./result/bin/nix-heuristic-gc --penalize-drvs --penalize-substitutable "$to_collect"
+          fi
+      - name: Save Nix store cache
+        if: always()
+        uses: nix-community/cache-nix-action/save@v6
+        with:
+          primary-key: git-${{matrix.runner}}-${{hashFiles('default.nix')}}-separate-${{matrix.target}}-${{github.run_id}}
