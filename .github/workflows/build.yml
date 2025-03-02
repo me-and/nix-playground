@@ -44,7 +44,7 @@ jobs:
       - name: Set up nixpkgs
         run: |
           commit="$(<commit)"
-          nix-channel --add https://github.com/NixOS/nixpkgs/archive/"$commit".tar.gz nixpkgs
+          nix-channel --add https://github.com/NixOS/nixpkgs/archive/nixpkgs-unstable.tar.gz nixpkgs
           nix-channel --update nixpkgs
       - name: Check out garbage collector
         uses: actions/checkout@v4
