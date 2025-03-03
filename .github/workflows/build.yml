@@ -8,8 +8,6 @@ jobs:
         runner:
 #          - ubuntu-24.04-arm
           - ubuntu-latest
-        target:
-          - python3Packages.cfn-lint
     runs-on: ${{matrix.runner}}
     steps:
       - name: Checkout
@@ -39,11 +37,11 @@ jobs:
       - name: Restore Nix store cache
         uses: nix-community/cache-nix-action/restore@v6
         with:
-          primary-key: cfnlint-${{matrix.runner}}-${{hashFiles('default.nix')}}-separate-${{matrix.target}}-${{github.run_id}}
-          restore-prefixes-all-matches: git-${{matrix.runner}}-
+          primary-key: cfnlint-${{matrix.runner}}-${{hashFiles('default.nix')}}-${{github.run_id}}
+          restore-prefixes-all-matches: cfnlint-${{matrix.runner}}-
       - name: Build
         timeout-minutes: 300
-        run: nix-build -A ${{matrix.target}}
+        run: nix-build -A python3Packages.cfn-lint
       - name: Set up nixpkgs
         if: always()
         run: |
@@ -58,6 +56,11 @@ jobs:
       - name: Build garbage collector
         if: always()
         run: nix-build -A pkg "$GITHUB_WORKSPACE"/nhgc
+      - name: Check disk usage
+        if: always()
+        run: |
+          du -hs /nix/*
+          df -h /nix
       - name: Collect garbage
         if: always()
         run: |
@@ -67,8 +70,13 @@ jobs:
           if (( to_collect > 0 )); then
               ./result/bin/nix-heuristic-gc --penalize-drvs --penalize-substitutable "$to_collect"
           fi
+      - name: Check disk usage
+        if: always()
+        run: |
+          du -hs /nix/*
+          df -h /nix
       - name: Save Nix store cache
         if: always()
         uses: nix-community/cache-nix-action/save@v6
         with:
-          primary-key: git-${{matrix.runner}}-${{hashFiles('default.nix')}}-separate-${{matrix.target}}-${{github.run_id}}
+          primary-key: cfnlint-${{matrix.runner}}-${{hashFiles('default.nix')}}-${{github.run_id}}
