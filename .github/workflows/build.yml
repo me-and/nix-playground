@@ -7,10 +7,12 @@ jobs:
       matrix:
         runner:
           - ubuntu-24.04-arm
-#          - ubuntu-latest
+          - ubuntu-latest
         target:
-          - gitFull
+          - gitMinimal
+          - git
           - gitSVN
+          - gitFull
           - git-doc
           - nixosTests.gitdaemon
           - nixosTests.buildbot
@@ -43,23 +45,32 @@ jobs:
       - name: Restore Nix store cache
         uses: nix-community/cache-nix-action/restore@v6
         with:
-          primary-key: git-${{matrix.runner}}-${{hashFiles('default.nix')}}-separate-${{matrix.target}}-${{github.run_id}}
-          restore-prefixes-all-matches: git-${{matrix.runner}}-
+          primary-key: ${{github.ref}}_${{matrix.runner}}_${{matrix.target}}_${{github.run_id}}_${{github.run_attempt}}
+          restore-prefixes-all-matches: ${{github.ref}}_${{matrix.runner}}_
       - name: Build
         timeout-minutes: 300
         run: nix-build -A ${{matrix.target}}
       - name: Set up nixpkgs
+        if: always()
         run: |
           nix-channel --add https://github.com/NixOS/nixpkgs/archive/nixpkgs-unstable.tar.gz nixpkgs
           nix-channel --update nixpkgs
       - name: Check out garbage collector
+        if: always()
         uses: actions/checkout@v4
         with:
           repository: risicle/nix-heuristic-gc
           path: nhgc
       - name: Build garbage collector
+        if: always()
         run: nix-build -A pkg "$GITHUB_WORKSPACE"/nhgc
+      - name: Check disk usage
+        if: always()
+        run: |
+          du -hs /nix/*
+          df -h /nix
       - name: Collect garbage
+        if: always()
         run: |
           store_size="$(du -bs /nix | cut -f1)"
           max_size=$((1024*1024*1024*5))  # 5GB uncompressed
@@ -67,11 +78,20 @@ jobs:
           if (( to_collect > 0 )); then
               ./result/bin/nix-heuristic-gc --penalize-drvs --penalize-substitutable "$to_collect"
           fi
+      - name: Check disk usage
+        if: always()
+        run: |
+          du -hs /nix/*
+          df -h /nix
       - name: Save Nix store cache
         if: always()
         uses: nix-community/cache-nix-action/save@v6
         with:
-          primary-key: git-${{matrix.runner}}-${{hashFiles('default.nix')}}-separate-${{matrix.target}}-${{github.run_id}}
+          primary-key: ${{github.ref}}_${{matrix.runner}}_${{matrix.target}}_${{github.run_id}}_${{github.run_attempt}}
+          purge: true
+          purge-primary-key: true
+          purge-created: 0
+          purge-prefixes: ${{github.ref}}_${{matrix.runner}}_${{matrix.target}}_
 
   merge-caches:
     name: Merge Nix caches
@@ -82,7 +102,7 @@ jobs:
       matrix:
         runner:
           - ubuntu-24.04-arm
-#          - ubuntu-latest
+          - ubuntu-latest
     concurrency:
       group: cachemerge-${{github.ref}}-${{matrix.runner}}
     permissions:
@@ -116,12 +136,12 @@ jobs:
       - name: Merge caches
         uses: nix-community/cache-nix-action@v6
         with:
-          primary-key: git-${{matrix.runner}}-${{hashFiles('default.nix')}}-merged-${{github.run_id}}
-          restore-prefixes-all-matches: git-${{matrix.runner}}-
+          primary-key: ${{github.ref}}_${{matrix.runner}}_${{github.run_id}}_${{github.run_attempt}}
+          restore-prefixes-all-matches: ${{github.ref}}_${{matrix.runner}}_
           purge: true
-          purge-prefixes: git-${{matrix.runner}}-
+          purge-prefixes: ${{github.ref}}_${{matrix.runner}}_
           purge-created: 0
-          purge-primary-key: never
+          purge-primary-key: always
       - name: Set up nixpkgs
         run: |
           nix-channel --add https://github.com/NixOS/nixpkgs/archive/nixpkgs-unstable.tar.gz nixpkgs
